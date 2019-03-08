@@ -1,12 +1,43 @@
+
+
+
+#"""
+#file: life_cycle_basic.py
+#author: Jan Rosa
+
+#This is a second version of the basic code.
+#I use one class life_cycle, which methods derive policy functions (policy_functions)
+#and simulate different trajectories (simulate_life_cycle).
+
+#A few aditional functions are definded:
+#approx_markov(...) - tauchen apoximation of the AR, from QunatEcon toolbooks,
+#normal_discrete_1(...) - discretization of the normal distribution from Kindermann toolbocks, converted from Fortran
+
+#"""
+######################################################################################################################
+# I clear globals
+for name in dir():
+    if not name.startswith('_'):
+        del globals()[name]
+
+######################################################################################################################
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
 import math as m
-"""
-This is first version of the basic code
-"""
 
-#Tauchen method from QuantEcon
+
+
+
+
+
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#FUNCTIONS
+
+######################################################################################################################
+#Tauchen method from QuantEcon, this section is from QUANtECON toolbocks
+
 """
 Filename: tauchen.py
 
@@ -76,11 +107,111 @@ def approx_markov(rho, sigma_u, m=3, n=7):
             P[i, j] = F(z + half_step) - F(z - half_step)
 
     return x, P
+######################################################################################################################
+######################################################################################################################
+#Discretization of the normal distribution from Kinderman's toolbocks
+def normal_discrete_1(mu, sigma,n):
 
-#def Rouwen(rho, sigma_u, m, n):
-    ## TO Do
+
+       ###### OTHER VARIABLES ####################################################
+
+       x = np.zeros(n)
+       prob = np.zeros(n)
+       maxit = 200
+       pi = m.pi
+       z = 0.0
+       mu_c = mu
+       sigma_c = sigma
+
+       ###### ROUTINE CODE #######################################################
+
+       # initialize parameters
+
+       # calculate 1/pi^0.25
+       pim4 = 1.0/pi**0.25
+       # get number of points
+       m1 = (n+1)/2
+
+
+
+       # start iteration
+       for i in range(m1):
+
+           # set reasonable starting values
+           if(i == 0):
+               z = m.sqrt(float(2*n+1))-1.85575*(float(2*n+1)**(-1/6))
+           elif(i == 1):
+               z = z - 1.14*(float(n)**0.426)/z
+           elif(i == 2):
+               z = 1.86*z+0.86*x[0]
+           elif(i == 3):
+               z = 1.91*z+0.91*x[1];
+           else:
+               temp = i-2
+               z = 2.0*z+x[temp];
+
+           #! root finding iterations
+           its = 0
+           while its < maxit:
+               its = its+1
+               p1 = pim4
+               p2 = 0.0
+               for j in range(n):
+                   p3 = p2
+                   p2 = p1
+                   p1 = z*m.sqrt(2.0/float(j+1))*p2-m.sqrt(float(j)/float(j+1))*p3
+               pp = m.sqrt(2.0*float(n))*p2
+               z1 = z
+               z  = z1-p1/pp
+               if abs(z-z1) < 1e-14:
+                   break
+           if its >= maxit:
+               print('normal_discrete','Could not discretize normal distribution')
+           # endif
+           temp = n-i-1
+           x[temp] = z
+           x[i] = -z
+           prob[i] = 2.0/pp**2
+           prob[temp] = prob[i]
+
+       prob = prob/m.sqrt(pi)
+       x = x*m.sqrt(2.0)*sigma_c + mu_c
+       return x, prob
+###############################################################################################################
+
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#CLASS DEFINITION
 
 class life_cycle:
+    """
+    The life cycle model is here constructed.
+
+    Consumers life T periods, retire after R.  Consumer may be educated or unecudated (i=0 or 1 for eductaed).
+    Her productivity process is givan as:
+    \ log p_{j,t,i} &= \kappa_i + \eta_{j,t,i} + \gamma_1 j -\gamma_2 j^{2} -\gamma_1 j^3 \\
+    eta_{j+1,t+1} &=\rho_i eta_{j,t} + \epsilon_{j,t,i}\\
+    \kappa_i &\sim N(0, \sigma_i)
+
+    Where kappa_i are fixed effects, \eta_{j,t,i} is AR productivity process.
+    Prarmetrs to calibrate a model are from Kindermann & Kruger (2017) and Kopecky (2017)
+
+
+    She optimize savings (a_{j,t}) and consumption (c_{j,t}) during the life time,
+    write to bugdet constraint given by wage w_t and productivity p_{j,t,i} thus solve a problem:
+
+    max_{a_{j+1,t+1},c_{j,t}} u(c_{j,t})+E\sum_{k=0}\pi_{j+i,t+i} \beta^k u(c_{j+k,t+k})
+    c_{j,t} +a_{j+1,t+1} <= ed_i w_t p_{j,t,i} \tilde{P}_t   + (1 +r_t)a_{j,t}
+    where:
+    \tilde{P}_t - aggregate shock
+    \pi_{j+i,t+i} - probabilty of surviving to period t+i
+    ed_i - education premium
+
+
+    """
+
+#######################################################CLASS CONSTRUCTOR, I WRITE ALL PARAMETERS HERE##########
+
     def __init__(self,
      T = 79, # number of periods of life
      R = 45, # retirement age
@@ -88,58 +219,92 @@ class life_cycle:
      beta=0.98, #discount factor
      r = 0.04, # interst rate- since it is partial equilibrium
      sigma  = 2.0, #CRRA function parameter
-     rho_edu = 0.985, # autororelation parameter in AR(1) productivity process
+     rho_edu = 0.97, # autororelation parameter in AR(1) productivity process
      sigma_AR_edu = 0.0180, #conditional variance  in AR(1) productivity process
-     rho_unedu = 0.985, # autororelation parameter in AR(1) productivity process
+     rho_unedu = 0.98, # autororelation parameter in AR(1) productivity process
      sigma_AR_unedu = 0.0346, #conditional variance  in AR(1) productivity process
-     a_n =60, #number of points
+     a_n =100, #number of points
      a_r = 5, #number of grid points at Rouwenhorst discretization
-     n_sim = 1000, #nuber of simulations to get distribution of consumers
+     n_sim = 1000, #number of simulations to get distribution of consumers
+     n_sim_ag = 100, #number of simulations to get distribution of consumers
      grid_min =1e-4, #minimal assets d
-     grid_max = 100.0, #maximal assets
-     edu_premium = [1,1.34],
-     edu_prop = [0.7,0.3],
-     ind_fe = [0.2061,  0.1517],
-     n_fe =2,
-     age_eff_coef_1 = 0.109/2,
-     age_eff_coef_2 = -0.001/2
+     grid_max = 60.0, #maximal assets
+     edu_premium = [1.0,1.34], #education premimum
+     edu_prop = [0.7,0.3], #proportion of eductated
+     ind_fe = [0.1517,  0.2061], #variation of the fixed effects for the different education groups
+     n_fe =2, #number of fixed effect shocks
+     age_eff_coef_1 = 0.0,#0.048,
+     age_eff_coef_2 = 0.0,#-0.0008,
+     age_eff_coef_3 = 0.0,#-6.46e-7,
+     n_ag = 5, #number of grid points of for aggregated shocks
+     mu_ag = 1.0, #expected value of the aggregate shock
+     sigma_ag = 0.001 #variation of the aggregate shock
      ):
-        self.T, self.R, self.alpha, self.beta, self.r, self.sigma, self.rho_edu, self.sigma_AR_edu, self.rho_unedu, self.sigma_AR_unedu, self.a_n,\
-        self.a_r,self.n_sim, self.grid_min, self.grid_max, self.edu_premium, self.edu_prop, self.ind_fe, self.n_fe, self.age_eff_coef_1, self.age_eff_coef_2 \
-        = T, R, alpha, beta, r, sigma, rho_edu, sigma_AR_edu, rho_unedu, sigma_AR_unedu,\
-        a_n, a_r, n_sim, grid_min, grid_max, edu_premium, edu_prop, ind_fe, n_fe, age_eff_coef_1, age_eff_coef_2
-        self.inv_sigma = 1/sigma
-        self.w = 1 #(1-alpha)*((1+r)/alpha)**(alpha/(alpha-1)) #wage guess
-        [val,P] =  approx_markov(rho_edu, sigma_AR_edu, m=2, n=a_r) #take values of shocks and transition matrix
-        self.val_edu =  val
-        self.P_edu =  P #np.full((a_r,a_r),1/7.0)  #tranistion matrix
-        self.ind_fe_edu = [-ind_fe[1], ind_fe[1] ]
-        self.P_ind_fe_edu = [0.5,0.5]
-        print(self.P_edu)
-        print(self.val_edu)
-        [val,P] =  approx_markov(rho_unedu, sigma_AR_unedu, m=2, n=a_r) #take values of shocks and transition matrix
-        self.P_unedu =  P #np.full((a_r,a_r),1/7.0)  #tranistion matrix
-        self.val_unedu =  val #AR discretizion vector values
-        self.ind_fe_unedu = [-ind_fe[0], ind_fe[0] ]
-        self.P_ind_fe_unedu = [0.5,0.5]
-        #print(m.exp(val[0]), m.exp(val[3]), m.exp(val[6]))
-        self.pens = self.w #pension
-        self.pf_a_edu = np.zeros((self.T+1, self.a_n+1, self.a_r, n_fe)) #saving policy function
-        self.pf_c_edu = np.zeros((self.T+1,self.a_n+1,self.a_r,n_fe)) #consumption policy unction
-        self.pf_a_unedu = np.zeros((self.T+1, self.a_n+1, self.a_r,n_fe)) #saving policy function
-        self.pf_c_unedu = np.zeros((self.T+1,self.a_n+1,self.a_r,n_fe)) #consumption policy unction
-        self.grid = np.geomspace(self.grid_min, self.grid_max, num=self.a_n+1) #grid definition
-        self.edu_premium = edu_premium
-        self.edu_prop = edu_prop
 
-        self.initial_prod = 2 #initial productivity
-        self.initial_asset = self.grid[0] #initial assets
-        self.sav_distr =  np.zeros((2*n_sim, T+1)) #distribution of savings from simulation
-        self.cons_distr = np.zeros((2*n_sim, T+1)) #distribution of consumption from simulation
+        self.T, self.R, self.alpha, self.beta, self.r, self.sigma, self.rho_edu, self.sigma_AR_edu, self.rho_unedu, self.sigma_AR_unedu, self.a_n,\
+        self.a_r,self.n_sim, self.grid_min, self.grid_max, self.edu_premium, self.edu_prop, self.ind_fe, self.n_fe, self.age_eff_coef_1, self.age_eff_coef_2, self.age_eff_coef_3, self.n_ag, \
+        self.n_sim_ag\
+        = T, R, alpha, beta, r, sigma, rho_edu, sigma_AR_edu, rho_unedu, sigma_AR_unedu,\
+        a_n, a_r, n_sim, grid_min, grid_max, edu_premium, edu_prop, ind_fe, n_fe, age_eff_coef_1, age_eff_coef_2, age_eff_coef_2, n_ag, n_sim_ag
+        self.inv_sigma = 1/sigma
+#grid definition
+        self.grid = np.geomspace(self.grid_min, self.grid_max, num=self.a_n+1) #grid definition
+# wage        
+        self.w = (1-alpha)*((1+r)/alpha)**(alpha/(alpha-1)) #wage guess
+
+# life tables
         prob_dead = np.genfromtxt('life_table.csv', delimiter=',')
         self.prob_surv = 1 - prob_dead
-        self.zsim1 = np.zeros((n_sim, T+1))
+#Aggregate shock disretization
+        [self.val_ag, self.Prob_ag] =  normal_discrete_1(mu_ag, sigma_ag,n_ag)
 
+#education premum and poprotion of educated
+
+        self.edu_premium = edu_premium
+        self.edu_prop = edu_prop
+### productivity shocks for educated
+        [val,P] =  approx_markov(rho_edu, sigma_AR_edu, m=2, n=a_r) #take values of shocks and transition matrix for AR productivity shocks
+        self.val_edu = val# [1.0,1.0,1.0,1.0,1.0]# values of the shock
+        self.P_edu =  P #np.full((a_r,a_r),1/7.0)  #tranistion matrix
+        self.ind_fe_edu = [-ind_fe[1], ind_fe[1] ] # values of the individual fixed effects
+        self.P_ind_fe_edu = [0.59,0.41] # probability of the fixed effects
+
+
+        self.edu_numb  = int(edu_prop[0]*n_sim) #proportion of the simulations of the educated consumers
+
+### productivity shocks for uneducated
+        [val,P] =  approx_markov(rho_unedu, sigma_AR_unedu, m=2, n=a_r) #take values of shocks and transition matrix
+        self.P_unedu =  P   #tranistion matrix
+        self.val_unedu = val #[1.0,1.0,1.0,1.0,1.0]
+        self.ind_fe_unedu = [-ind_fe[0], ind_fe[0] ] # values of the individual fixed effects
+        self.P_ind_fe_unedu =   [0.59,0.41] # probability of the fixed effects
+
+#pension definitions, here the same, minimal pension for all consumers
+        self.pens = 0.4*self.w
+# initail profductivity
+        self.initial_prod = 2 #initial productivity
+        self.initial_asset = self.grid[0] #initial assets
+#grid and policy functions matrix definition
+
+#policy function of assets and consumption for educated and uneducated
+        self.pf_a_edu = np.zeros((self.T+1, self.a_n+1, self.a_r, n_fe, n_ag)) #saving policy function
+        self.pf_c_edu = np.zeros((self.T+1,self.a_n+1,self.a_r,n_fe, n_ag)) #consumption policy unction
+        self.pf_a_unedu = np.zeros((self.T+1, self.a_n+1, self.a_r,n_fe, n_ag)) #saving policy function
+        self.pf_c_unedu = np.zeros((self.T+1,self.a_n+1,self.a_r,n_fe, n_ag)) #consumption policy unction
+
+
+
+# distribution of savings and consumption
+        self.sav_distr =  np.zeros((n_sim, n_sim_ag, T+1)) #distribution of savings from simulation
+        self.cons_distr = np.zeros((n_sim, n_sim_ag, T+1)) #distribution of consumption from simulation
+# aditional table to control shock values
+        self.zsim1 = np.zeros((n_sim, T+1))
+# aditional table to check a budget constraint
+        self.bc = np.zeros((n_sim, n_sim_ag, T+1))
+
+######################################################################################################################
+#####################################################################################################################
+# some simple functions
 
     def utility(self,x): #calculate utility
          return x**(1-self.sigma)/(1-self.sigma)
@@ -148,92 +313,139 @@ class life_cycle:
          if(x<1e-6):
               print("error")
          return x**(-self.sigma)
+
     def inv_marginal_u(self,x): #inverse of marginal utility
-         if(x**(-self.inv_sigma)<1e-6):
+         if(x<1e-6):
               print("error",x)
+              return 1e-6**(-self.inv_sigma)
          return x**(-self.inv_sigma)
 
+##########################################################################################################################
+##########################################################################################################################
+#Calculate the policy function for consumption and savings
     def policy_functions(self):
           """
-          Find policy functions using endogenous grid method
+          Find policy functions using endogenous grid method.
           """
           #grid definition
           end_grid = np.zeros(self.a_n+1) #endogenous grid definition
-          pf_a = np.zeros((self.T+1, self.a_n+1, self.a_r,self.n_fe)) #asset policy function
-          pf_c = np.zeros((self.T+1,self.a_n+1,self.a_r,self.n_fe)) #cnsumption policy function
+          pf_a = np.zeros((self.T+1, self.a_n+1, self.a_r,self.n_fe,self.n_ag)) #local table for the asset policy function
+          pf_c = np.zeros((self.T+1,self.a_n+1,self.a_r,self.n_fe, self.n_ag)) #local table for the consumption policy function
+
+########################################POLICY FUNCTION FOR EDUCTAED#####################################################
           #iteration for last year
           for f in range(self.n_fe):
                for p in range(self.a_r):
-                   for i in range(self.a_n+1):
-                       pf_c[self.T,i,p,f] = (1+self.r)*self.grid[i] + self.pens
-                       pf_a[self.T,i,p,f] = 0
-          #start iterations
-          for j in range(self.T-1,-1,-1):
+                   for q in range(self.n_ag):
+                       for i in range(self.a_n+1):
+                           pf_c[self.T,i,p,f,q] = (1+self.r)*self.grid[i] + self.pens
+                           pf_a[self.T,i,p,f,q] = 0.0
+         #iteration for the retirees
+          for j in range(self.T-1,self.R,-1):
                for f in range(self.n_fe):
                     for p in range(self.a_r):
+                        for q in range(self.n_ag):
+                            for i in range(self.a_n+1):
 
-                        w = self.edu_premium[1]*self.w*m.exp(self.ind_fe_edu[f]+self.val_edu[p]+self.age_eff_coef_1*j +self.age_eff_coef_2*j**2 )
+                                m_cons_sum =  self.marginal_u(pf_c[j+1,i,p,f,q])
 
-                        for i in range(self.a_n+1):
-                            m_cons_sum = 0
-                            for i_p in range(self.a_r):
-                                 #compute marginal consumptions sum
-                               m_cons_sum = m_cons_sum + self.P_edu[p,i_p]*self.marginal_u(pf_c[j+1,i,i_p,f])
-
-                            cons = self.inv_marginal_u(self.prob_surv[j]*self.beta*(1+self.r)*m_cons_sum) #compute consumption
-
-                            a = 1/(1+self.r)*(self.grid[i]+cons-w) #compute endogenous grid values
-
-                            if j >self.R: #for retiree, it made the same iteration p times (it will be corrected) TO Do
+                                cons = self.inv_marginal_u(self.prob_surv[j]*self.beta*(1+self.r)*m_cons_sum)
                                 a = 1/(1+self.r)*(self.grid[i]+cons-self.pens)
+                                a = np.maximum(self.grid_min,a)
 
-                            a = np.maximum(0,a)
 
-                            end_grid[i] = a
-                        pf_a[j,:,p,f] = np.maximum(np.interp(self.grid, end_grid, self.grid),self.grid_min) #interpolate on exogenous grid
+                                end_grid[i] = a
+                            pf_a[j,:,p,f,q] = np.maximum(np.interp(self.grid, end_grid, self.grid),self.grid_min) #interpolate on exogenous grid
+                            pf_c[j,:,p,f,q] =(1+self.r)*self.grid+ self.pens - pf_a[j,:,p,f,q]
 
-                        pf_c[j,:,p,f] = (1+self.r)*self.grid+ w - pf_a[j,:,p,f] #find consumption policy function
-                        if j >self.R:
-                           pf_c[j,:,p,f] = (1+self.r)*self.grid + self.pens - pf_a[j,:,p,f]
+        #iteration for the workes
+          for j in range(self.R,-1,-1):
+               for f in range(self.n_fe):
+                    for p in range(self.a_r):
+                        for q in range(self.n_ag):
+                            w = self.edu_premium[1]*self.w*m.exp(self.ind_fe_edu[f]+self.val_edu[p]+self.age_eff_coef_1*j +self.age_eff_coef_2*(j)**2+ self.age_eff_coef_3*(j)**3)
+
+                            for i in range(self.a_n+1):
+                                m_cons_sum = 0
+                                for i_p in range(self.a_r):
+                                    for i_q in range(self.n_ag):
+
+                                        m_cons_sum = m_cons_sum+ self.P_edu[p,i_p]*self.Prob_ag[i_q]*self.marginal_u(self.val_ag[i_q]*pf_c[j+1,i,i_p,f,i_q])
+                                if j == self.R:
+                                    m_cons_sum = self.marginal_u(pf_c[j+1,i,p,f,q])
+                                cons = self.inv_marginal_u(self.prob_surv[j]*self.beta*(1+self.r)*m_cons_sum) #compute consumption
+
+
+                                a = 1/(1+self.r)*(self.grid[i]+cons-w)*self.val_ag[q] #compute endogenous grid values
+                                a = np.maximum(self.grid_min,a)
+
+                                end_grid[i] = a
+                            pf_a[j,:,p,f,q] = np.maximum(np.interp(self.grid, end_grid, self.grid),self.grid_min) #interpolate on exogenous grid
+
+                            pf_c[j,:,p,f,q] = (1+self.r)*self.grid/self.val_ag[q]+ w - pf_a[j,:,p,f,q] #find consumption policy function
+
 
           self.pf_a_edu = pf_a
           self.pf_c_edu = pf_c
+########################################POLICY FUNCTION FOR UNEDUCTAED#####################################################
 
-          pf_a = np.zeros((self.T+1, self.a_n+1, self.a_r,self.n_fe)) #asset policy function
-          pf_c = np.zeros((self.T+1,self.a_n+1,self.a_r,self.n_fe)) #cnsumption policy function
+          pf_a = np.zeros((self.T+1, self.a_n+1, self.a_r,self.n_fe, self.n_ag)) #asset policy function
+          pf_c = np.zeros((self.T+1,self.a_n+1,self.a_r,self.n_fe, self.n_ag)) #cnsumption policy function
           #iteration for last year
           for f in range(self.n_fe):
                for p in range(self.a_r):
-                   for i in range(self.a_n+1):
-                       pf_c[self.T,i,p,f] = (1+self.r)*self.grid[i] + self.pens
-                       pf_a[self.T,i,p,f] = 0
-          #start iterations
+                   for q in range(self.n_ag):
+                       for i in range(self.a_n+1):
+                           pf_c[self.T,i,p,f,q] = (1+self.r)*self.grid[i] + self.pens
+                           pf_a[self.T,i,p,f,q] = 0.0
 
-          for j in range(self.T-1,-1,-1):
+          #iteration for the retirees
+          for j in range(self.T-1,self.R,-1):
                for f in range(self.n_fe):
                     for p in range(self.a_r):
-                        w = self.edu_premium[0]*self.w*m.exp(self.ind_fe_unedu[f]+self.val_unedu[p]+self.age_eff_coef_1*j +self.age_eff_coef_2*j**2)
-                        for i in range(self.a_n+1):
-                            m_cons_sum = 0
-                            for i_p in range(self.a_r):
-                                 #compute marginal consumptions sum
-                               m_cons_sum = m_cons_sum + self.P_unedu[p,i_p]*self.marginal_u(pf_c[j+1,i,i_p,f])
-                            cons = self.inv_marginal_u(self.prob_surv[j]*self.beta*(1+self.r)*m_cons_sum) #compute consumption
+                        for q in range(self.n_ag):
+                            for i in range(self.a_n+1):
 
-                            a = 1/(1+self.r)*(self.grid[i]+cons-w) #compute endogenous grid values
-
-                            if j >self.R: #for retiree, it made the same iteration p times (it will be corrected) TO Do
+                                m_cons_sum = self.marginal_u(pf_c[j+1,i,p,f,q])
+                                cons = self.inv_marginal_u(self.prob_surv[j]*self.beta*(1+self.r)*m_cons_sum)
                                 a = 1/(1+self.r)*(self.grid[i]+cons-self.pens)
-                            end_grid[i] = a
-                        pf_a[j,:,p,f] = np.maximum(np.interp(self.grid, end_grid, self.grid),self.grid_min) #interpolate on exogenous grid
+                                a = np.maximum(self.grid_min,a)
 
-                        pf_c[j,:,p,f] = (1+self.r)*self.grid+w - pf_a[j,:,p,f] #find consumption policy function
-                        if j >self.R:
-                           pf_c[j,:,p,f] = (1+self.r)*self.grid + self.pens - pf_a[j,:,p,f]
+                                end_grid[i] = a
+                            pf_a[j,:,p,f,q] = np.maximum(np.interp(self.grid, end_grid, self.grid),self.grid_min) #interpolate on exogenous grid
+                            pf_c[j,:,p,f,q] = (1+self.r)*self.grid + self.pens - pf_a[j,:,p,f,q]
+
+        #iteration for the workes
+          for j in range(self.R,-1,-1):
+               for f in range(self.n_fe):
+                    for p in range(self.a_r):
+                        for q in range(self.n_ag):
+                            w = self.edu_premium[0]*self.w*m.exp(self.ind_fe_unedu[f]+self.val_unedu[p]+self.age_eff_coef_1*j +self.age_eff_coef_2*(j)**2+ self.age_eff_coef_3*(j)**3)
+                            for i in range(self.a_n+1):
+                                m_cons_sum = 0
+                                for i_p in range(self.a_r):
+                                    for i_q in range(self.n_ag):
+                                        m_cons_sum = m_cons_sum + self.P_unedu[p,i_p]*self.Prob_ag[i_q]*self.marginal_u(self.val_ag[i_q]*pf_c[j+1,i,i_p,f,i_q])
+                                if j == self.R:
+                                    m_cons_sum = self.marginal_u(pf_c[j+1,i,p,f,q])
+                                cons = self.inv_marginal_u(self.prob_surv[j]*self.beta*(1+self.r)*m_cons_sum) #compute consumption
+
+                                a = 1/(1+self.r)*(self.grid[i]+cons-w)*self.val_ag[q] #compute endogenous grid values
+                                a = np.maximum(self.grid_min,a)
+
+                                end_grid[i] = a
+                            pf_a[j,:,p,f,q] = np.maximum(np.interp(self.grid, end_grid, self.grid),self.grid_min) #interpolate on exogenous grid
+
+                            pf_c[j,:,p,f,q] = (1+self.r)*self.grid/self.val_ag[q]+ w - pf_a[j,:,p,f,q] #find consumption policy function
 
           self.pf_a_unedu = pf_a
           self.pf_c_unedu = pf_c
           return self.pf_a_edu, self.pf_c_edu, self.pf_a_unedu, self.pf_c_unedu
+
+
+############################################################################################################################################
+############################################################################################################################################
+
 
     def simulate_life_cycle(self):
           '''
@@ -241,72 +453,117 @@ class life_cycle:
           we simulate many possible shocks paths and saving and consumption paths
           instead of finding general distribution
           '''
+          ##local definitions
           initial_prod = self.initial_prod
           initial_sav = self.initial_asset
-          s_path = np.zeros((self.n_sim, self.T+1))
-          c_path = np.zeros((self.n_sim, self.T+1))
-          zsim1 = np.zeros((self.n_sim, self.T+1)) #table of shocks, used for
+          s_path = np.zeros((self.n_sim, self.n_sim_ag, self.T+1))
+          c_path = np.zeros((self.n_sim, self.n_sim_ag, self.T+1))
+          ## true (not divided by aggregate productivity) values of savings and consumption
+          s_path_true = np.zeros((self.n_sim, self.n_sim_ag, self.T+1))
+          c_path_true = np.zeros((self.n_sim, self.n_sim_ag, self.T+1))
+          z_ag_hist =  np.zeros((self.n_sim_ag, self.T+1)) #history of aggregate shocks
+          zsim1 = np.zeros((self.n_sim, self.n_sim_ag, self.T+1)) #table of shocks, used for
+          prod_history = np.ones((self.n_sim_ag,self.T+1)) #vaues of aggregate shocks
+          bc = np.zeros((self.n_sim, self.n_sim_ag, self.T+1)) #budget constraint
+
+## AR productivity shocks
           zsim = initial_prod
-          zsim1[:,0] = zsim
-          s_path[:,0] = initial_sav #initial productivity
+          zsim_old = initial_prod
+## initiazlization of the shock values and savings
+          zsim1[:,:,0] = zsim
+          s_path[:,:,0] = initial_sav #initial productivity
            #initial conusumption
-          for s in range(self.n_sim):
-              rand1 = np.random.uniform(low=0.0, high=1.0)
-              f=1
-              if ( rand1 <=self.P_ind_fe_edu[0] ):
-                   f = 0
-              c_path[s,0] = self.pf_c_edu[0,0,zsim,f]
-              zsim = initial_prod
-              for j in range(1,self.T+1,1):
-                  s_path[s,j] = np.interp(s_path[s,j-1], self.grid, self.pf_a_edu[j-1,:,zsim,f])
-                  c_path[s,j] = np.interp(s_path[s,j], self.grid, self.pf_c_edu[j,:,zsim,f])
-                  rand = np.random.uniform(low=0.0, high=1.0)
-                  for p in range(self.a_r):
-                       temp = np.sum(self.P_unedu[zsim, 0:p+1])
-                       # if(p==0):
-                       #      temp = self.P_edu[sim,0]
-                       # else:
-                       #      temp = np.sum(self.P_edu[sim, 0:p+1])
-                       if ( rand <=temp ):
-                            zsim =p
-                            break
-                  zsim1[s,j] = zsim
 
-          self.sav_distr[0:self.n_sim ,:] = self.edu_prop[1]*s_path
-          self.cons_distr[0:self.n_sim ,:] = self.edu_prop[1]*c_path
 
-          zsim = initial_prod
-          zsim1[:,0] = zsim
-          s_path[:,0] = initial_sav #initial productivity
-          for s in range(self.n_sim):
-              zsim = initial_prod
-              rand1 = np.random.uniform(low=0.0, high=1.0)
-              f=1
-              if ( rand1 <=self.P_ind_fe_unedu[0] ):
-                   f = 0
-              c_path[s,0] = self.pf_c_unedu[0,0,zsim,f]
-              for j in range(1,self.T+1,1):
-                  s_path[s,j] = np.interp(s_path[s,j-1], self.grid, self.pf_a_unedu[j-1,:,zsim,f])
-                  c_path[s,j] = np.interp(s_path[s,j], self.grid, self.pf_c_unedu[j,:,zsim,f])
+           #aq is indicator pro aggregate shock
+          for aq in range(self.n_sim_ag):
+              #simulate aggregate shocks history
+              for j in range(self.R+1):
                   rand = np.random.uniform(low=0.0, high=1.0)
-                  for p in range(self.a_r):
-                       temp = np.sum(self.P_unedu[zsim, 0:p+1])
-                            # if(p==0):
-                            #     temp = self.P_unedu[sim,0]
-                            # else:
-                            # temp = np.sum(self.P_unedu[sim, 0:p+1])
-                       if ( rand <=temp ):
+                  for q in range(self.n_ag):
+                        if ( rand <=np.sum(self.Prob_ag[0:q+1]) ):
+                             z_ag_hist[aq,j] = q
+                             prod_history[aq,j] = self.val_ag[q]
+                             break
+                #indicidual simulations for educated
+              for s in range(self.edu_numb):
+                zsim = initial_prod
+                #simulate the individual fixed effect
+                rand1 = np.random.uniform(low=0.0, high=1.0)
+                f=1
+                if ( rand1 <=self.P_ind_fe_edu[0] ):
+                     f = 0
+
+                #initialize consumption
+                c_path[s,aq,0] = self.pf_c_edu[0,0,zsim,f,int(z_ag_hist[aq,0])]
+                c_path_true[s,0] = c_path[s,0]* prod_history[aq,0]
+
+                for j in range(1,self.T+1,1):
+                     rand2 = np.random.uniform(low=0.0, high=1.0)
+                     for p in range(self.a_r):
+
+                          if ( rand2 <=np.sum(self.P_edu[zsim, 0:p+1]) ):
+                               zsim_old = zsim
+                               zsim =p
+                               break
+                     zsim1[s,aq,j] = zsim
+                     s_path[s,aq,j] = np.interp(s_path[s,aq,j-1], self.grid, self.pf_a_edu[j-1,:,zsim_old,f,int(z_ag_hist[aq,j-1])])
+                     c_path[s,aq,j] = np.interp(s_path[s,aq,j], self.grid, self.pf_c_edu[j,:,zsim,f,int(z_ag_hist[aq,j])])
+                     s_path_true[s,aq,j] = s_path[s,aq,j]*np.prod(prod_history[aq,0:j])
+                     c_path_true[s,aq,j] = c_path[s,aq,j]*np.prod(prod_history[aq,0:j+1])
+                     #check budget constraint
+                     w = self.edu_premium[1]*np.prod(prod_history[aq,0:j])*self.w*m.exp(self.ind_fe_edu[f]+self.val_edu[zsim_old]+self.age_eff_coef_1*(j-1) +self.age_eff_coef_2*(j-1)**2+ self.age_eff_coef_3*(j-1)**3)
+                     if j<=self.R+1:
+                         bc[s,aq,j-1] = s_path_true[s,aq,j]+ c_path_true[s,aq,j-1] - (1+self.r)*s_path_true[s,aq,j-1] - w
+                     else:
+                         bc[s,aq,j-1] = s_path_true[s,aq,j]+ c_path_true[s,aq,j-1] - (1+self.r)*s_path_true[s,aq,j-1] - \
+                         self.pens*np.prod(prod_history[aq,0:j+1])
+            #write local variables to globa;
+              self.sav_distr[0:self.edu_numb, aq, :] = s_path_true[0:self.edu_numb, aq, :]
+              self.cons_distr[0:self.edu_numb, aq, :] = c_path_true[0:self.edu_numb, aq, :]
+              self.bc[0:self.edu_numb, aq, :] = bc[0:self.edu_numb, aq, :]
+              #do the same for uneducated
+              for s in range(self.edu_numb, self.n_sim,1):
+                 zsim = initial_prod
+                 rand1 = np.random.uniform(low=0.0, high=1.0)
+                 f=1
+                 if ( rand1 <=self.P_ind_fe_unedu[0] ):
+                      f = 0
+                 c_path[s,aq,0] = self.pf_c_unedu[0,0,zsim,f,int(z_ag_hist[aq,0])]
+                 c_path_true[s,aq,0] = c_path[s,aq,0]*prod_history[aq,0]
+                 for j in range(1,self.T+1,1):
+
+                       rand = np.random.uniform(low=0.0, high=1.0)
+                       for p in range(self.a_r):
+                            temp = np.sum(self.P_unedu[zsim, 0:p+1])
+                            if ( rand <=temp ):
+                                 zsim_old = zsim
                                  zsim =p
                                  break
-                  zsim1[s,j] = zsim
+
+                       zsim1[s,aq,j] = zsim
+                       s_path[s,aq,j] = np.interp(s_path[s,aq,j-1], self.grid, self.pf_a_unedu[j-1,:,zsim_old,f,int(z_ag_hist[aq,j-1])])
+                       c_path[s,aq,j] = np.interp(s_path[s,aq,j], self.grid, self.pf_c_unedu[j,:,zsim,f,int(z_ag_hist[aq,j])])
+                       s_path_true[s,aq,j] = s_path[s,aq,j]*np.prod(prod_history[aq,0:j])
+                       c_path_true[s,aq,j] = c_path[s,aq,j]*np.prod(prod_history[aq,0:j+1])
+                       w = self.edu_premium[0]*np.prod(prod_history[aq,0:j])*self.w*m.exp(self.ind_fe_unedu[f]+self.val_unedu[zsim_old]+self.age_eff_coef_1*(j-1) +self.age_eff_coef_2*(j-1)**2+ self.age_eff_coef_3*(j-1)**3)
+                       if j<=self.R+1:
+                           bc[s,aq,j-1] = s_path_true[s,aq,j]+ c_path_true[s,aq,j-1] - (1+self.r)*s_path_true[s,aq,j-1] - w
+                       else:
+                           bc[s,aq,j-1] = s_path_true[s,aq,j]+ c_path_true[s,aq,j-1] - (1+self.r)*s_path_true[s,aq,j-1] - \
+                           self.pens*np.prod(prod_history[aq,0:j+1])
+              self.sav_distr[self.edu_numb: self.n_sim,aq,:] = s_path_true[self.edu_numb: self.n_sim,aq,:]
+              self.cons_distr[self.edu_numb: self.n_sim,aq,:] =c_path_true[self.edu_numb: self.n_sim,aq,:]
+              self.bc[self.edu_numb: self.n_sim, aq, :] = bc[self.edu_numb: self.n_sim, aq, :]
 
 
-          self.sav_distr[self.n_sim: 2*self.n_sim,:] = self.edu_prop[0]*s_path
-          self.cons_distr[self.n_sim: 2*self.n_sim,:] = self.edu_prop[0]*c_path
-          self.zsim1 = zsim1
+
           return self.sav_distr, self.cons_distr, self.zsim1
-
+##############################################################################################################
     def plot_life_cycle(self):
+         """
+         Some plots. Savongs and consumption distribution, policy function for the period 44 (just before retirment)
+         """
 
          s_mean = np.zeros(self.T+1)
          s_max = np.zeros(self.T+1)
@@ -320,10 +577,15 @@ class life_cycle:
          z_max = np.zeros(self.T+1)
          z_min = np.zeros(self.T+1)
 
+         bc_mean = np.zeros(self.T+1)
+         bc_max = np.zeros(self.T+1)
+         bc_min = np.zeros(self.T+1)
+
+
          for j in range(1,self.T+1,1):
-             s_mean[j] = np.mean(self.sav_distr[:,j])
-             s_max[j] = np.percentile(self.sav_distr[:,j],90)
-             s_min[j] = np.percentile(self.sav_distr[:,j],10)
+             s_mean[j] = np.mean(self.sav_distr[:,:,j])
+             s_max[j] = np.percentile(self.sav_distr[:,:,j],90)
+             s_min[j] = np.percentile(self.sav_distr[:,:,j],10)
          plt.plot(range(self.T+1), s_mean, label = "mean savings")
          plt.plot(range(self.T+1), s_max, label = "90th percentile of savings")
          plt.plot(range(self.T+1), s_min, label = "90th percentile of savings")
@@ -342,9 +604,9 @@ class life_cycle:
          plt.show()
 
          for j in range(1,self.T+1,1):
-             c_mean[j] = np.mean(self.cons_distr[:,j])
-             c_max[j] = np.percentile(self.cons_distr[:,j],90)
-             c_min[j] = np.percentile(self.cons_distr[:,j],10)
+             c_mean[j] = np.mean(self.cons_distr[:,:,j])
+             c_max[j] = np.percentile(self.cons_distr[:,:,j],90)
+             c_min[j] = np.percentile(self.cons_distr[:,:,j],10)
          plt.plot(range(self.T+1), c_mean, label = "mean consumption")
          plt.plot(range(self.T+1), c_max, label = "90th percentile of consumption")
          plt.plot(range(self.T+1), c_min, label = "10th percentile consumption")
@@ -352,17 +614,32 @@ class life_cycle:
          plt.legend(loc='best')
          plt.show()
 
+         for j in range(1,self.T+1,1):
+             bc_mean[j] = np.mean(self.bc[:,:,j])
+             bc_max[j] = np.percentile(self.bc[:,:,j],99)
+             bc_min[j] = np.percentile(self.bc[:,:,j],1)
+         plt.plot(range(self.T+1), bc_mean, label = "bc consumption")
+         plt.plot(range(self.T+1), bc_max, label = "bc max")
+         plt.plot(range(self.T+1), bc_min, label = "bc min")
+         plt.ylabel('bc')
+         plt.legend(loc='best')
+         plt.show()
 
-         plt.plot(self.grid[0:50], self.pf_a_edu[44,0:50,0,1], label = "savings for worst group")
-         plt.plot(self.grid[0:50], self.pf_a_edu[44,0:50,1,1], label = "savings for second worst group")
-         plt.plot(self.grid[0:50], self.pf_a_edu[44,0:50,2,1], label = "savings for mednian group")
-         plt.plot(self.grid[0:50], self.pf_a_edu[44,0:50,3,1], label = "savings for second best group")
-         plt.plot(self.grid[0:50], self.pf_a_edu[44,0:50,4,1], label = "savings for best group")
+         plt.plot(self.grid[0:40], self.pf_a_edu[40,0:40,0,1,2], label = "savings for worst group")
+         plt.plot(self.grid[0:40], self.pf_a_edu[40,0:40,1,1,2], label = "savings for second worst group")
+         plt.plot(self.grid[0:40], self.pf_a_edu[40,0:40,2,1,2], label = "savings for mednian group")
+         plt.plot(self.grid[0:40], self.pf_a_edu[40,0:40,3,1,2], label = "savings for second best group")
+         plt.plot(self.grid[0:40], self.pf_a_edu[40,0:40,4,1,2], label = "savings for best group")
+         # plt.plot(self.grid[0:80], self.pf_a_edu[44,0:80,0,1,2], label = "savings for worst2 group")
+         # plt.plot(self.grid[0:80], self.pf_a_edu[44,0:80,1,1,2], label = "savings for second2 worst group")
+         # plt.plot(self.grid[0:80], self.pf_a_edu[44,0:80,2,1,2], label = "savings for mednian2 group")
+         # plt.plot(self.grid[0:80], self.pf_a_edu[44,0:80,3,1,2], label = "savings for second best2 group")
+         # plt.plot(self.grid[0:80], self.pf_a_edu[44,0:80,4,1,2], label = "savings for best 2group")
          plt.ylabel('saving policy function for eductated')
          plt.legend(loc='best')
          plt.show()
 
-
+############################################################################################################################
     def execute_life_cycle(self):
           self.policy_functions()
           self.simulate_life_cycle()
@@ -370,4 +647,5 @@ class life_cycle:
 
 #### test ######
 test_1 = life_cycle()
+#test_1.policy_functions()
 test_1.execute_life_cycle()
