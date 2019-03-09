@@ -20,6 +20,8 @@ P_{j+1} &= \theta_{j+1}P_j\\
 $$      
 When consumer retires, she obtain the same minimal pension.
 Therefore, assuming CRRA utility, after dividing by $P_j$, consumers solve a problem defined by a Bellman equation (denoting by $a_j$ assets, $c_{j}$, consumption, $\pi_{j}$ probability of surviving to the next period, r- interst rate, pens- pension):
+
+... Latex part which may not render at github
 $$
 \begin{aligned}
 V_{j,i}(a_{j})&= \max_{a_{j+1},c_{j}}  u(c_{j}) + \beta \pi_{j}\textbf{E}(\theta_{j+1}^{1-\sigma}V_{j+1} (\hat{a}_{j+1}, \theta_{j+1})\\
@@ -34,6 +36,7 @@ $$
 c_j^{-\sigma} &= \beta \pi_j (1+r) E_{j}(\theta_{j+1}c_{j+1} )^{-\sigma}
 \end{aligned}
 $$
+...
 
 ##Code structure
 The main part of the code is a class life_cycle. Before I define two auxiliary functions:
@@ -107,7 +110,7 @@ c_path_true[s,aq,j] = c_path[s,aq,j]*np.prod(prod_history[aq,0:j+1])
 ## Results
 Here I present a few plots of policy functiions, consumption paths and savings paths which were found using life_cycle class methods
 
-![alt text](https://github.com/janrosa1/Master_thesis/blob/master/Figure_1.png)
+![alt text](https://github.com/janrosa1/Master_thesis/blob/master/Figure_1.png )
 ![alt text](https://github.com/janrosa1/Master_thesis/blob/master/Figure_2.png)
 ![alt text](https://github.com/janrosa1/Master_thesis/blob/master/Figure_3.png)
 ![alt text](https://github.com/janrosa1/Master_thesis/blob/master/Figure_4.png)
